@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Задачник Эврика</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg: #0f1117;
+            --surface: #1a1d27;
+            --surface2: #22252f;
+            --border: #2a2d38;
+            --text: #e1e4ed;
+            --text2: #9ca0b0;
+            --accent: #5b8def;
+            --accent-hover: #4a7de0;
+            --red: #e0556a;
+            --red-bg: rgba(224,85,106,0.12);
+            --yellow: #e5c07b;
+            --yellow-bg: rgba(229,192,123,0.12);
+            --green: #8ccf7e;
+            --green-bg: rgba(140,207,126,0.12);
+            --priority-high: #e0556a;
+            --priority-mid: #e5c07b;
+            --priority-low: #8ccf7e;
+            --radius: 8px;
+            --radius-sm: 5px;
+            --transition: 0.15s ease;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+            min-height: 100vh;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .app { max-width:960px; margin:0 auto; padding:24px 16px 60px; }
+        .header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--border); }
+        .header h1 { font-size:1.4rem; font-weight:700; }
+        .header-stats { display:flex; gap:12px; font-size:0.82rem; color:var(--text2); }
+        .header-stats span { background:var(--surface2); padding:4px 10px; border-radius:20px; white-space:nowrap; }
+        .header-stats .done { color:var(--green); }
+        .sync-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:14px; padding:10px 14px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); font-size:0.8rem; color:var(--text2); }
+        .sync-bar .status { margin-left:auto; display:flex; align-items:center; gap:4px; }
+        .saved { color:var(--green); }
+        .pending { color:var(--yellow); }
+        .btn-sm { padding:6px 14px; border-radius:16px; border:1px solid var(--border); background:var(--surface2); color:var(--text); cursor:pointer; font-size:0.78rem; font-family:inherit; transition:var(--transition); white-space:nowrap; }
+        .btn-sm:hover { border-color:var(--accent); color:var(--accent); }
+        .btn-sm.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+        .filters { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; }
+        .filter-btn { padding:6px 12px; border-radius:20px; font-size:0.8rem; border:1px solid var(--border); background:var(--surface); color:var(--text2); cursor:pointer; transition:var(--transition); white-space:nowrap; }
+        .filter-btn:hover { border-color:var(--accent); color:var(--text); }
+        .filter-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+        .filter-btn.urgent { border-color:var(--red); color:var(--red); }
+        .filter-btn.urgent.active { background:var(--red); color:#fff; }
+        .block { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:12px; overflow:hidden; }
+        .block-header { display:flex; align-items:center; gap:10px; padding:12px 16px; cursor:pointer; background:var(--surface2); border-bottom:1px solid transparent; }
+        .block.open .block-header { border-bottom-color:var(--border); }
+        .block-header:hover { background:#252834; }
+        .block-icon { font-size:1rem; }
+        .block-title { flex:1; font-weight:600; font-size:0.9rem; display:flex; align-items:center; gap:8px; }
+        .block-counter { font-size:0.7rem; color:var(--text2); background:var(--surface); padding:2px 8px; border-radius:12px; }
+        .block-arrow { transition:transform 0.2s; font-size:0.65rem; color:var(--text2); }
+        .block.open .block-arrow { transform:rotate(90deg); }
+        .block-body { display:none; }
+        .block.open .block-body { display:block; }
+        .task-list { list-style:none; }
+        .task-item { display:flex; align-items:flex-start; gap:8px; padding:10px 16px; border-bottom:1px solid var(--border); }
+        .task-item:last-child { border-bottom:none; }
+        .task-item.completed .task-text { text-decoration:line-through; color:var(--text2); opacity:0.6; }
+        .task-item.completed { background:rgba(140,207,126,0.03); }
+        .priority-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; margin-top:6px; }
+        .priority-high { background:var(--priority-high); box-shadow:0 0 6px var(--priority-high); }
+        .priority-mid { background:var(--priority-mid); box-shadow:0 0 6px var(--priority-mid); }
+        .priority-low { background:var(--priority-low); box-shadow:0 0 4px var(--priority-low); }
+        .task-check { width:18px; height:18px; border-radius:4px; border:2px solid var(--border); flex-shrink:0; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:10px; transition:var(--transition); background:transparent; color:transparent; }
+        .task-check:hover { border-color:var(--green); }
+        .task-item.completed .task-check { background:var(--green); border-color:var(--green); color:#000; }
+        .task-content { flex:1; min-width:0; }
+        .task-text { font-size:0.85rem; word-break:break-word; }
+        .task-meta { font-size:0.7rem; color:var(--text2); margin-top:2px; display:flex; gap:6px; flex-wrap:wrap; }
+        .task-meta .tag { background:var(--surface2); padding:1px 6px; border-radius:10px; font-size:0.65rem; }
+        .tag.gmail { background:var(--red-bg); color:var(--red); }
+        .tag.timeweb { background:var(--yellow-bg); color:var(--yellow); }
+        .tag.yandex { background:var(--green-bg); color:var(--green); }
+        .task-actions { display:flex; gap:2px; flex-shrink:0; opacity:0; transition:opacity 0.15s; }
+        .task-item:hover .task-actions { opacity:1; }
+        .btn-icon { width:26px; height:26px; border-radius:var(--radius-sm); border:none; cursor:pointer; font-size:0.75rem; display:flex; align-items:center; justify-content:center; background:transparent; color:var(--text2); }
+        .btn-icon:hover { background:var(--surface2); color:var(--text); }
+        .btn-icon.del:hover { background:var(--red-bg); color:var(--red); }
+        .add-section { margin-top:16px; text-align:center; }
+        .btn-add { padding:10px 24px; border-radius:20px; border:1px dashed var(--border); background:transparent; color:var(--text2); cursor:pointer; font-size:0.9rem; font-family:inherit; }
+        .btn-add:hover { border-color:var(--accent); color:var(--accent); background:rgba(91,141,239,0.05); }
+        .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:100; backdrop-filter:blur(3px); }
+        .modal { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; width:90%; max-width:460px; max-height:85vh; overflow-y:auto; }
+        .modal h3 { margin-bottom:14px; font-size:1rem; }
+        .modal label { display:block; font-size:0.75rem; color:var(--text2); margin-bottom:3px; margin-top:10px; }
+        .modal input,.modal textarea,.modal select { width:100%; padding:9px 11px; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-family:inherit; font-size:0.85rem; resize:vertical; }
+        .modal textarea { min-height:60px; }
+        .modal input:focus,.modal textarea:focus,.modal select:focus { outline:none; border-color:var(--accent); }
+        .modal-actions { display:flex; gap:8px; margin-top:16px; justify-content:flex-end; }
+        .btn { padding:8px 18px; border-radius:var(--radius-sm); border:none; cursor:pointer; font-size:0.85rem; font-family:inherit; }
+        .btn-save { background:var(--accent); color:#fff; }
+        .btn-save:hover { background:var(--accent-hover); }
+        .btn-cancel { background:var(--surface2); color:var(--text); }
+        .search-box { width:100%; padding:9px 13px; background:var(--surface); border:1px solid var(--border); border-radius:22px; color:var(--text); font-size:0.85rem; margin-bottom:14px; font-family:inherit; }
+        .search-box:focus { outline:none; border-color:var(--accent); }
+        .hidden { display:none !important; }
+        @media (max-width:600px) { .task-actions { opacity:1; } }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <div class="header">
+            <h1>📋 Задачник Эврика</h1>
+            <div class="header-stats">
+                <span class="done" id="statDone">✅ 0</span>
+                <span class="total" id="statTotal">📌 0</span>
+                <span id="statUrgent" style="color:var(--red)">🔴 0</span>
+            </div>
+        </div>
+        <div class="sync-bar">
+            <span>☁️ Telegram Cloud</span>
+            <span class="status" id="syncStatus"><span class="saved">● сохранено</span></span>
+            <button class="btn-sm primary" id="btnExport">📥 JSON</button>
+            <button class="btn-sm" id="btnImport">📤 JSON</button>
+            <button class="btn-sm" id="btnReset">🔄 Сброс</button>
+        </div>
+        <input type="text" class="search-box" id="searchInput" placeholder="🔍 Поиск...">
+        <div class="filters" id="filters">
+            <button class="filter-btn active" data-filter="all">Все</button>
+            <button class="filter-btn" data-filter="active">Активные</button>
+            <button class="filter-btn" data-filter="done">Выполненные</button>
+            <button class="filter-btn urgent" data-filter="urgent">🔴 Срочные</button>
+        </div>
+        <div id="taskContainer"></div>
+        <div class="add-section"><button class="btn-add" id="btnAddTask">+ Добавить задачу</button></div>
+        <input type="file" id="fileInput" accept=".json" style="display:none;">
+    </div>
+    <div class="modal-overlay hidden" id="modalOverlay">
+        <div class="modal">
+            <h3 id="modalTitle">Новая задача</h3>
+            <label>Блок</label>
+            <select id="modalBlock"><option value="0">Блок 0 — Срочное</option><option value="1">Блок 1 — Пароли и почта</option><option value="2">Блок 2 — Платежи и финансы</option><option value="3">Блок 3 — МойСклад и номенклатура</option></select>
+            <label>Задача</label><textarea id="modalText" placeholder="Текст задачи..."></textarea>
+            <label>Приоритет</label>
+            <select id="modalPriority"><option value="high">🔴 Высокий</option><option value="mid" selected>🟡 Средний</option><option value="low">🟢 Низкий</option></select>
+            <label>Теги</label><input type="text" id="modalTags" placeholder="gmail, timeweb...">
+            <div class="modal-actions"><button class="btn btn-cancel" id="btnModalCancel">Отмена</button><button class="btn btn-save" id="btnModalSave">Сохранить</button></div>
+        </div>
+    </div>
+    <script>
+        (function() {
+            const tg = window.Telegram.WebApp;
+            tg.ready();
+            tg.expand();
+            const CLOUD_KEY = 'evrika_tasks';
+
+            const defaultTasks = [
+                {"id":"demo-1","block":"0","text":"Пример срочной задачи — проверить оплату хостинга до 20 числа","priority":"high","tags":["хостинг","срочно"],"done":false},
+                {"id":"demo-2","block":"1","text":"Пример задачи по почте — создать ящик info@company.ru","priority":"mid","tags":["почта","yandex"],"done":false},
+                {"id":"demo-3","block":"3","text":"Пример задачи по складу — обновить остатки после инвентаризации","priority":"low","tags":["склад"],"done":true}
+            ];
+
+            const blockDefs = {
+                '0':{title:'⚡ Блок 0 — Срочное',icon:'🔴'},
+                '1':{title:'🔐 Блок 1 — Пароли и почта',icon:'🔑'},
+                '2':{title:'💰 Блок 2 — Платежи и финансы',icon:'💳'},
+                '3':{title:'📦 Блок 3 — МойСклад и номенклатура',icon:'📊'}
+            };
+
+            let tasks=[], currentFilter='all', searchQuery='', editingId=null;
+            const container=document.getElementById('taskContainer'), modalOverlay=document.getElementById('modalOverlay'), modalTitle=document.getElementById('modalTitle'), modalBlock=document.getElementById('modalBlock'), modalText=document.getElementById('modalText'), modalPriority=document.getElementById('modalPriority'), modalTags=document.getElementById('modalTags'), syncStatus=document.getElementById('syncStatus'), fileInput=document.getElementById('fileInput');
+
+            function setSyncStatus(text,cls){ syncStatus.innerHTML=`<span class="${cls}">${text}</span>`; }
+
+            // Загрузка из Telegram CloudStorage
+            function loadTasks(){
+                setSyncStatus('⏳ загрузка...','pending');
+                tg.CloudStorage.getItem(CLOUD_KEY, (err,value)=>{
+                    if(err||!value){ tasks=JSON.parse(JSON.stringify(defaultTasks)); saveTasks(); render(); setSyncStatus('● сохранено','saved'); return; }
+                    try{ tasks=JSON.parse(value); if(!Array.isArray(tasks)||tasks.length===0) throw new Error('empty'); }catch(e){ tasks=JSON.parse(JSON.stringify(defaultTasks)); }
+                    render(); setSyncStatus('● сохранено','saved');
+                });
+            }
+
+            // Сохранение в Telegram CloudStorage
+            function saveTasks(){
+                setSyncStatus('⏳ синхронизация...','pending');
+                tg.CloudStorage.setItem(CLOUD_KEY, JSON.stringify(tasks), (err,success)=>{
+                    if(success) setSyncStatus('● сохранено','saved');
+                    else setSyncStatus('⚠ ошибка','pending');
+                });
+            }
+
+            function resetToDefaults(){
+                if(confirm('Сбросить все задачи к демо-списку?')){ tasks=JSON.parse(JSON.stringify(defaultTasks)); saveTasks(); render(); }
+            }
+
+            // Экспорт в JSON-файл
+            function exportToJSON(){
+                const blob=new Blob([JSON.stringify(tasks,null,2)],{type:'application/json'});
+                const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='evrika-tasks.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            }
+
+            // Импорт из JSON-файла (перезаписывает облако)
+            function importFromJSON(file){
+                const reader=new FileReader();
+                reader.onload=function(e){
+                    try{
+                        const data=JSON.parse(e.target.result);
+                        if(!Array.isArray(data)) throw new Error('Файл должен содержать массив задач');
+                        tasks=data; saveTasks(); render();
+                        setSyncStatus('● импортировано','saved');
+                    }catch(err){ alert('Ошибка: '+err.message); }
+                };
+                reader.readAsText(file);
+            }
+
+            function triggerImport(){ fileInput.click(); }
+            function generateId(){ return 't-'+Date.now()+'-'+Math.random().toString(36).slice(2,6); }
+            function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+            function getFilteredTasks(){
+                let f=[...tasks];
+                if(searchQuery.trim()){ const q=searchQuery.toLowerCase().trim(); f=f.filter(t=>t.text.toLowerCase().includes(q)||(t.tags||[]).some(tg=>tg.toLowerCase().includes(q))); }
+                if(currentFilter==='active') f=f.filter(t=>!t.done);
+                else if(currentFilter==='done') f=f.filter(t=>t.done);
+                else if(currentFilter==='urgent') f=f.filter(t=>t.priority==='high'&&!t.done);
+                return f;
+            }
+
+            function render(){
+                const filtered=getFilteredTasks(); let html='';
+                for(const bid of ['0','1','2','3']){
+                    const bt=filtered.filter(t=>t.block===bid);
+                    if(bt.length===0&&currentFilter!=='all') continue;
+                    const def=blockDefs[bid], doneC=bt.filter(t=>t.done).length;
+                    html+=`<div class="block open" data-block="${bid}"><div class="block-header"><span class="block-icon">${def.icon}</span><span class="block-title">${def.title} <span class="block-counter">${doneC}/${bt.length}</span></span><span class="block-arrow">▶</span></div><div class="block-body"><ul class="task-list">${bt.map(t=>renderTask(t)).join('')}</ul></div></div>`;
+                }
+                container.innerHTML=html||'<div style="text-align:center;padding:40px;color:var(--text2)">Нет задач</div>';
+                document.getElementById('statDone').textContent=`✅ ${tasks.filter(t=>t.done).length}`;
+                document.getElementById('statTotal').textContent=`📌 ${tasks.length}`;
+                document.getElementById('statUrgent').textContent=`🔴 ${tasks.filter(t=>t.priority==='high'&&!t.done).length}`;
+                bindEvents();
+            }
+
+            function renderTask(t){
+                const pl={high:'🔴 Высокий',mid:'🟡 Средний',low:'🟢 Низкий'}[t.priority]||'';
+                const tagsHtml=(t.tags||[]).map(tag=>{
+                    let cls='';
+                    if(['gmail','google'].includes(tag.toLowerCase())) cls='gmail';
+                    else if(['timeweb'].includes(tag.toLowerCase())) cls='timeweb';
+                    else if(['yandex','яндекс'].includes(tag.toLowerCase())) cls='yandex';
+                    return `<span class="tag ${cls}">${tag}</span>`;
+                }).join('');
+                return `<li class="task-item ${t.done?'completed':''}" data-id="${t.id}"><div class="priority-dot priority-${t.priority}"></div><div class="task-check" data-action="toggle" data-id="${t.id}">✓</div><div class="task-content"><div class="task-text">${escapeHtml(t.text)}</div><div class="task-meta">${tagsHtml} ${pl}</div></div><div class="task-actions"><button class="btn-icon" data-action="edit" data-id="${t.id}">✎</button><button class="btn-icon del" data-action="delete" data-id="${t.id}">✕</button></div></li>`;
+            }
+
+            function bindEvents(){
+                document.querySelectorAll('.block-header').forEach(h=>h.addEventListener('click',function(){this.closest('.block').classList.toggle('open');}));
+                document.querySelectorAll('[data-action]').forEach(el=>el.addEventListener('click',function(e){
+                    e.stopPropagation();
+                    const a=this.dataset.action, id=this.dataset.id;
+                    if(a==='toggle') toggleTask(id);
+                    if(a==='edit') openEditModal(id);
+                    if(a==='delete') deleteTask(id);
+                }));
+            }
+
+            function toggleTask(id){ const t=tasks.find(t=>t.id===id); if(t){ t.done=!t.done; saveTasks(); render(); } }
+            function deleteTask(id){ if(confirm('Удалить задачу?')){ tasks=tasks.filter(t=>t.id!==id); saveTasks(); render(); } }
+            function openAddModal(){ editingId=null; modalTitle.textContent='Новая задача'; modalBlock.value='0'; modalText.value=''; modalPriority.value='mid'; modalTags.value=''; modalOverlay.classList.remove('hidden'); modalText.focus(); }
+            function openEditModal(id){ const t=tasks.find(t=>t.id===id); if(!t) return; editingId=id; modalTitle.textContent='Редактировать'; modalBlock.value=t.block; modalText.value=t.text; modalPriority.value=t.priority; modalTags.value=(t.tags||[]).join(', '); modalOverlay.classList.remove('hidden'); modalText.focus(); }
+            function closeModal(){ modalOverlay.classList.add('hidden'); editingId=null; }
+            function saveModal(){
+                const text=modalText.value.trim(); if(!text) return;
+                const data={block:modalBlock.value,text,priority:modalPriority.value,tags:modalTags.value.split(',').map(s=>s.trim()).filter(Boolean)};
+                if(editingId){ const t=tasks.find(t=>t.id===editingId); if(t) Object.assign(t,data); }
+                else { tasks.unshift({id:generateId(),done:false,...data}); }
+                saveTasks(); render(); closeModal();
+            }
+
+            document.getElementById('filters').addEventListener('click',function(e){
+                if(e.target.classList.contains('filter-btn')){ document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active')); e.target.classList.add('active'); currentFilter=e.target.dataset.filter; render(); }
+            });
+            document.getElementById('searchInput').addEventListener('input',function(){ searchQuery=this.value; render(); });
+            document.getElementById('btnAddTask').addEventListener('click',openAddModal);
+            document.getElementById('btnModalCancel').addEventListener('click',closeModal);
+            document.getElementById('btnModalSave').addEventListener('click',saveModal);
+            document.getElementById('btnExport').addEventListener('click',exportToJSON);
+            document.getElementById('btnImport').addEventListener('click',triggerImport);
+            document.getElementById('btnReset').addEventListener('click',resetToDefaults);
+            fileInput.addEventListener('change',function(){ if(this.files.length>0){ importFromJSON(this.files[0]); this.value=''; } });
+            modalOverlay.addEventListener('click',function(e){ if(e.target===modalOverlay) closeModal(); });
+            document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&!modalOverlay.classList.contains('hidden')) closeModal(); });
+
+            loadTasks();
+        })();
+    </script>
+</body>
+</html>
