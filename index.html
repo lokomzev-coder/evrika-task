@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Задачи</title>
+    <title>Задачник Эврика</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
@@ -36,7 +36,7 @@
         .filter-btn.urgent { border-color:var(--red); color:var(--red); }
         .filter-btn.urgent.active { background:var(--red); color:#fff; }
         .block { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:12px; overflow:hidden; }
-        .block-header { display:flex; align-items:center; gap:10px; padding:12px 16px; cursor:pointer; background:var(--surface2); border-bottom:1px solid transparent; }
+        .block-header { display:flex; align-items:center; gap:10px; padding:12px 16px; cursor:pointer; background:var(--surface2); border-bottom:1px solid transparent; position:relative; }
         .block.open .block-header { border-bottom-color:var(--border); }
         .block-header:hover { background:#252834; }
         .block-icon { font-size:1rem; } .block-arrow { transition:transform 0.2s; font-size:0.65rem; color:var(--text2); }
@@ -44,6 +44,8 @@
         .block-body { display:none; } .block.open .block-body { display:block; }
         .block-title { flex:1; font-weight:600; font-size:0.9rem; display:flex; align-items:center; gap:8px; }
         .block-counter { font-size:0.7rem; color:var(--text2); background:var(--surface); padding:2px 8px; border-radius:12px; }
+        .block-actions-header { display:flex; gap:4px; opacity:0; transition:opacity 0.15s; }
+        .block-header:hover .block-actions-header { opacity:1; }
         .task-list { list-style:none; }
         .task-item { display:flex; align-items:flex-start; gap:8px; padding:10px 16px; border-bottom:1px solid var(--border); }
         .task-item:last-child { border-bottom:none; }
@@ -68,7 +70,7 @@
         .btn-icon { width:26px; height:26px; border-radius:var(--radius-sm); border:none; cursor:pointer; font-size:0.75rem; display:flex; align-items:center; justify-content:center; background:transparent; color:var(--text2); }
         .btn-icon:hover { background:var(--surface2); color:var(--text); }
         .btn-icon.del:hover { background:var(--red-bg); color:var(--red); }
-        .add-section { margin-top:16px; text-align:center; }
+        .add-section { margin-top:16px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
         .btn-add { padding:10px 24px; border-radius:20px; border:1px dashed var(--border); background:transparent; color:var(--text2); cursor:pointer; font-size:0.9rem; font-family:inherit; }
         .btn-add:hover { border-color:var(--accent); color:var(--accent); background:rgba(91,141,239,0.05); }
         .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:100; backdrop-filter:blur(3px); }
@@ -85,13 +87,17 @@
         .search-box { width:100%; padding:9px 13px; background:var(--surface); border:1px solid var(--border); border-radius:22px; color:var(--text); font-size:0.85rem; margin-bottom:14px; font-family:inherit; }
         .search-box:focus { outline:none; border-color:var(--accent); }
         .hidden { display:none !important; }
-        @media (max-width:600px) { .task-actions { opacity:1; } }
+        .log-panel { margin-top:12px; padding:10px 14px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); font-size:0.75rem; color:var(--text2); max-height:150px; overflow-y:auto; font-family:monospace; }
+        .log-panel .log-line { padding:2px 0; border-bottom:1px solid rgba(255,255,255,0.03); }
+        .log-panel .log-error { color:var(--red); }
+        .log-panel .log-success { color:var(--green); }
+        @media (max-width:600px) { .task-actions { opacity:1; } .block-actions-header { opacity:1; } }
     </style>
 </head>
 <body>
     <div class="app">
         <div class="header">
-            <h1>📋 Задачи/h1>
+            <h1>📋 Задачник Эврика</h1>
             <div class="header-stats">
                 <span class="done" id="statDone">✅ 0</span>
                 <span class="total" id="statTotal">📌 0</span>
@@ -103,7 +109,9 @@
             <span class="status" id="syncStatus"><span class="saved">● онлайн</span></span>
             <button class="btn-sm primary" id="btnExport">📥 JSON</button>
             <button class="btn-sm" id="btnImport">📤 JSON</button>
+            <button class="btn-sm" id="btnShowLogs" style="font-size:0.7rem;">📋 Логи</button>
         </div>
+        <div class="log-panel hidden" id="logPanel"></div>
         <input type="text" class="search-box" id="searchInput" placeholder="🔍 Поиск...">
         <div class="filters" id="filters">
             <button class="filter-btn active" data-filter="all">Все</button>
@@ -112,27 +120,34 @@
             <button class="filter-btn urgent" data-filter="urgent">🔴 Срочные</button>
         </div>
         <div id="taskContainer"><div style="text-align:center;padding:40px;color:var(--text2)">⏳ Загрузка...</div></div>
-        <div class="add-section"><button class="btn-add" id="btnAddTask">+ Добавить задачу</button></div>
+        <div class="add-section">
+            <button class="btn-add" id="btnAddTask">+ Добавить задачу</button>
+            <button class="btn-add" id="btnAddBlock">+ Добавить блок</button>
+        </div>
         <input type="file" id="fileInput" accept=".json" style="display:none;">
     </div>
     <div class="modal-overlay hidden" id="modalOverlay">
         <div class="modal">
             <h3 id="modalTitle">Новая задача</h3>
-            <label>Блок</label>
-            <select id="modalBlock"><option value="0">Блок 0 — Срочное</option><option value="1">Блок 1 — Пароли и почта</option><option value="2">Блок 2 — Платежи и финансы</option><option value="3">Блок 3 — МойСклад и номенклатура</option></select>
-            <label>Задача</label><textarea id="modalText" placeholder="Текст задачи..."></textarea>
-            <label>Приоритет</label>
-            <select id="modalPriority"><option value="high">🔴 Высокий</option><option value="mid" selected>🟡 Средний</option><option value="low">🟢 Низкий</option></select>
-            <label>Теги</label><input type="text" id="modalTags" placeholder="gmail, timeweb...">
+            <div id="modalTaskFields">
+                <label>Блок</label>
+                <select id="modalBlock"></select>
+                <label>Задача</label><textarea id="modalText" placeholder="Текст задачи..."></textarea>
+                <label>Приоритет</label>
+                <select id="modalPriority"><option value="high">🔴 Высокий</option><option value="mid" selected>🟡 Средний</option><option value="low">🟢 Низкий</option></select>
+                <label>Теги</label><input type="text" id="modalTags" placeholder="gmail, timeweb...">
+            </div>
+            <div id="modalBlockFields" class="hidden">
+                <label>Название блока</label><input type="text" id="modalBlockTitle" placeholder="Название">
+                <label>Иконка</label><input type="text" id="modalBlockIcon" placeholder="🔴">
+            </div>
             <div class="modal-actions"><button class="btn btn-cancel" id="btnModalCancel">Отмена</button><button class="btn btn-save" id="btnModalSave">Сохранить</button></div>
         </div>
     </div>
     <script>
         (function() {
-            // ─── ВСТАВЬ СВОИ КЛЮЧИ SUPABASE ───
             const SUPABASE_URL = 'https://iedxjtldtiickpyauvap.supabase.co';
             const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImllZHhqdGxkdGlpY2tweWF1dmFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5MTEwOTgsImV4cCI6MjA5ODQ4NzA5OH0.FM0PAVe9tH_sltNttMoEVWo6WMIcS-El9GNu2pHDQHw'; // anon key
-            // ─────────────────────────────────
 
             const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
             const tg = window.Telegram.WebApp;
@@ -141,9 +156,13 @@
 
             let userId = null;
             let tasks = [];
+            let blocks = [];
             let currentFilter = 'all';
             let searchQuery = '';
             let editingId = null;
+            let editingBlockId = null;
+            let modalMode = 'task'; // 'task' или 'block'
+            let logs = [];
 
             const container = document.getElementById('taskContainer');
             const modalOverlay = document.getElementById('modalOverlay');
@@ -152,26 +171,45 @@
             const modalText = document.getElementById('modalText');
             const modalPriority = document.getElementById('modalPriority');
             const modalTags = document.getElementById('modalTags');
+            const modalTaskFields = document.getElementById('modalTaskFields');
+            const modalBlockFields = document.getElementById('modalBlockFields');
+            const modalBlockTitle = document.getElementById('modalBlockTitle');
+            const modalBlockIcon = document.getElementById('modalBlockIcon');
             const syncStatus = document.getElementById('syncStatus');
             const fileInput = document.getElementById('fileInput');
+            const logPanel = document.getElementById('logPanel');
 
-            const blockDefs = {
-                '0':{title:'⚡ Блок 0 — Срочное',icon:'🔴'},
-                '1':{title:'🔐 Блок 1 — Пароли и почта',icon:'🔑'},
-                '2':{title:'💰 Блок 2 — Платежи и финансы',icon:'💳'},
-                '3':{title:'📦 Блок 3 — МойСклад и номенклатура',icon:'📊'}
-            };
+            // Блоки по умолчанию
+            const defaultBlocks = [
+                { id: '0', title: '⚡ Блок 0 — Срочное', icon: '🔴' },
+                { id: '1', title: '🔐 Блок 1 — Пароли и почта', icon: '🔑' },
+                { id: '2', title: '💰 Блок 2 — Платежи и финансы', icon: '💳' },
+                { id: '3', title: '📦 Блок 3 — МойСклад и номенклатура', icon: '📊' },
+            ];
+
+            function addLog(msg, type = 'info') {
+                const time = new Date().toLocaleTimeString();
+                logs.unshift({ time, msg, type });
+                if (logs.length > 100) logs.pop();
+                renderLogs();
+                console.log(`[${type}] ${msg}`);
+            }
+
+            function renderLogs() {
+                if (logPanel.classList.contains('hidden')) return;
+                logPanel.innerHTML = logs.map(l =>
+                    `<div class="log-line log-${l.type}">[${l.time}] ${l.msg}</div>`
+                ).join('');
+            }
 
             function setSyncStatus(text, cls) {
                 syncStatus.innerHTML = `<span class="${cls}">${text}</span>`;
             }
 
-            // Получаем ID пользователя из Telegram
             function getUserId() {
                 if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
                     return 'tg_' + tg.initDataUnsafe.user.id;
                 }
-                // fallback для браузера
                 let id = localStorage.getItem('evrika_user_id');
                 if (!id) {
                     id = 'web_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
@@ -180,9 +218,75 @@
                 return id;
             }
 
-            // Загрузка задач из Supabase
+            // Загрузка блоков
+            async function loadBlocks() {
+                const { data, error } = await supabase
+                    .from('blocks')
+                    .select('*')
+                    .eq('user_id', userId)
+                    .order('created_at', { ascending: true });
+
+                if (error) {
+                    addLog('Ошибка загрузки блоков: ' + error.message, 'error');
+                    blocks = [...defaultBlocks];
+                } else if (!data || data.length === 0) {
+                    blocks = [...defaultBlocks];
+                    // Сохраняем блоки по умолчанию
+                    for (const b of blocks) {
+                        await supabase.from('blocks').upsert({
+                            id: b.id,
+                            user_id: userId,
+                            title: b.title,
+                            icon: b.icon,
+                        });
+                    }
+                    addLog('Созданы блоки по умолчанию', 'success');
+                } else {
+                    blocks = data;
+                    addLog(`Загружено ${blocks.length} блоков`, 'success');
+                }
+            }
+
+            // Сохранение блока
+            async function saveBlock(block) {
+                const { error } = await supabase.from('blocks').upsert({
+                    id: block.id,
+                    user_id: userId,
+                    title: block.title,
+                    icon: block.icon,
+                });
+                if (error) {
+                    addLog('Ошибка сохранения блока: ' + error.message, 'error');
+                    return false;
+                }
+                return true;
+            }
+
+            // Удаление блока
+            async function deleteBlockFromDB(id) {
+                // Перемещаем задачи в блок 0
+                const { error: updateError } = await supabase
+                    .from('tasks')
+                    .update({ block: '0' })
+                    .eq('block', id)
+                    .eq('user_id', userId);
+
+                if (updateError) {
+                    addLog('Ошибка перемещения задач: ' + updateError.message, 'error');
+                }
+
+                const { error } = await supabase.from('blocks').delete().eq('id', id);
+                if (error) {
+                    addLog('Ошибка удаления блока: ' + error.message, 'error');
+                    return false;
+                }
+                return true;
+            }
+
             async function loadTasks() {
                 setSyncStatus('⏳ загрузка...', 'pending');
+                addLog('Загрузка задач...', 'info');
+
                 const { data, error } = await supabase
                     .from('tasks')
                     .select('*')
@@ -190,33 +294,31 @@
                     .order('created_at', { ascending: false });
 
                 if (error) {
-                    console.error('Ошибка загрузки:', error);
+                    addLog('Ошибка загрузки задач: ' + error.message, 'error');
                     setSyncStatus('⚠ ошибка БД', 'error');
                     tasks = [];
                 } else {
                     tasks = data || [];
+                    addLog(`Загружено ${tasks.length} задач`, 'success');
                     setSyncStatus('● онлайн', 'saved');
                 }
                 render();
             }
 
-            // Сохранение одной задачи в Supabase
             async function saveTask(task) {
-                const { error } = await supabase
-                    .from('tasks')
-                    .upsert({
-                        id: task.id,
-                        user_id: userId,
-                        block: task.block,
-                        text: task.text,
-                        priority: task.priority,
-                        tags: task.tags || [],
-                        done: task.done,
-                        updated_at: new Date().toISOString()
-                    });
+                const { error } = await supabase.from('tasks').upsert({
+                    id: task.id,
+                    user_id: userId,
+                    block: task.block,
+                    text: task.text,
+                    priority: task.priority,
+                    tags: task.tags || [],
+                    done: task.done,
+                    updated_at: new Date().toISOString()
+                });
 
                 if (error) {
-                    console.error('Ошибка сохранения:', error);
+                    addLog('Ошибка сохранения задачи: ' + error.message, 'error');
                     setSyncStatus('⚠ ошибка', 'error');
                     return false;
                 }
@@ -224,44 +326,75 @@
                 return true;
             }
 
-            // Удаление задачи из Supabase
             async function deleteTaskFromDB(id) {
-                const { error } = await supabase
-                    .from('tasks')
-                    .delete()
-                    .eq('id', id);
-
+                const { error } = await supabase.from('tasks').delete().eq('id', id);
                 if (error) {
-                    console.error('Ошибка удаления:', error);
+                    addLog('Ошибка удаления: ' + error.message, 'error');
                     return false;
                 }
                 return true;
             }
 
-            // Массовый импорт (для загрузки JSON)
             async function importAllTasks(newTasks) {
                 setSyncStatus('⏳ импорт...', 'pending');
-                // Сначала удаляем все старые задачи пользователя
-                await supabase.from('tasks').delete().eq('user_id', userId);
-                // Затем вставляем новые
-                const toInsert = newTasks.map(t => ({
-                    id: t.id || generateId(),
-                    user_id: userId,
-                    block: t.block,
-                    text: t.text,
-                    priority: t.priority || 'mid',
-                    tags: t.tags || [],
-                    done: t.done || false,
-                    updated_at: new Date().toISOString()
-                }));
+                addLog(`Начинаем импорт ${newTasks.length} задач...`, 'info');
 
-                const { error } = await supabase.from('tasks').insert(toInsert);
-                if (error) {
-                    console.error('Ошибка импорта:', error);
-                    setSyncStatus('⚠ ошибка', 'error');
-                } else {
-                    setSyncStatus('● онлайн', 'saved');
+                // Валидация
+                const validTasks = [];
+                const errors = [];
+                for (const t of newTasks) {
+                    if (!t.text || !t.block) {
+                        errors.push(`Задача без text/block: ${JSON.stringify(t).slice(0, 50)}`);
+                        continue;
+                    }
+                    // Проверяем, что блок существует
+                    if (!blocks.find(b => b.id === t.block)) {
+                        addLog(`Блок "${t.block}" не найден, задача "${t.text.slice(0, 30)}..." → блок 0`, 'info');
+                        t.block = '0';
+                    }
+                    validTasks.push({
+                        id: t.id || generateId(),
+                        user_id: userId,
+                        block: t.block,
+                        text: t.text,
+                        priority: t.priority || 'mid',
+                        tags: t.tags || [],
+                        done: t.done || false,
+                        updated_at: new Date().toISOString()
+                    });
                 }
+
+                if (errors.length > 0) {
+                    addLog(`Пропущено ${errors.length} некорректных задач`, 'error');
+                }
+
+                if (validTasks.length === 0) {
+                    addLog('Нет валидных задач для импорта', 'error');
+                    setSyncStatus('⚠ нет данных', 'error');
+                    return;
+                }
+
+                // Удаляем старые
+                addLog('Удаляем старые задачи...', 'info');
+                const { error: delError } = await supabase.from('tasks').delete().eq('user_id', userId);
+                if (delError) {
+                    addLog('Ошибка удаления старых задач: ' + delError.message, 'error');
+                }
+
+                // Вставляем новые батчами по 50
+                addLog(`Вставляем ${validTasks.length} задач...`, 'info');
+                for (let i = 0; i < validTasks.length; i += 50) {
+                    const batch = validTasks.slice(i, i + 50);
+                    const { error } = await supabase.from('tasks').insert(batch);
+                    if (error) {
+                        addLog(`Ошибка вставки батча ${i}: ${error.message}`, 'error');
+                    } else {
+                        addLog(`Батч ${i}-${i + batch.length} вставлен`, 'success');
+                    }
+                }
+
+                setSyncStatus('● онлайн', 'saved');
+                addLog('Импорт завершён', 'success');
                 await loadTasks();
             }
 
@@ -283,13 +416,20 @@
             function render() {
                 const filtered = getFilteredTasks();
                 let html = '';
-                for (const bid of ['0', '1', '2', '3']) {
-                    const bt = filtered.filter(t => t.block === bid);
+                for (const block of blocks) {
+                    const bt = filtered.filter(t => t.block === block.id);
                     if (bt.length === 0 && currentFilter !== 'all') continue;
-                    const def = blockDefs[bid];
                     const doneC = bt.filter(t => t.done).length;
-                    html += `<div class="block open" data-block="${bid}">
-                        <div class="block-header"><span class="block-icon">${def.icon}</span><span class="block-title">${def.title} <span class="block-counter">${doneC}/${bt.length}</span></span><span class="block-arrow">▶</span></div>
+                    html += `<div class="block open" data-block="${block.id}">
+                        <div class="block-header">
+                            <span class="block-icon">${block.icon}</span>
+                            <span class="block-title">${block.title} <span class="block-counter">${doneC}/${bt.length}</span></span>
+                            <div class="block-actions-header">
+                                <button class="btn-icon" data-action="editBlock" data-block-id="${block.id}" title="Редактировать блок">✎</button>
+                                <button class="btn-icon del" data-action="deleteBlock" data-block-id="${block.id}" title="Удалить блок">✕</button>
+                            </div>
+                            <span class="block-arrow">▶</span>
+                        </div>
                         <div class="block-body"><ul class="task-list">${bt.map(t => renderTask(t)).join('')}</ul></div>
                     </div>`;
                 }
@@ -297,10 +437,19 @@
                 document.getElementById('statDone').textContent = `✅ ${tasks.filter(t => t.done).length}`;
                 document.getElementById('statTotal').textContent = `📌 ${tasks.length}`;
                 document.getElementById('statUrgent').textContent = `🔴 ${tasks.filter(t => t.priority === 'high' && !t.done).length}`;
+                updateBlockSelect();
                 bindEvents();
             }
 
+            function updateBlockSelect() {
+                modalBlock.innerHTML = blocks.map(b =>
+                    `<option value="${b.id}">${b.icon} ${b.title}</option>`
+                ).join('');
+            }
+
             function renderTask(t) {
+                const block = blocks.find(b => b.id === t.block);
+                const blockName = block ? block.title : 'Без категории';
                 const pl = { high: '🔴 Высокий', mid: '🟡 Средний', low: '🟢 Низкий' }[t.priority] || '';
                 const tagsHtml = (t.tags || []).map(tag => {
                     let cls = '';
@@ -312,20 +461,39 @@
                 return `<li class="task-item ${t.done ? 'completed' : ''}" data-id="${t.id}">
                     <div class="priority-dot priority-${t.priority}"></div>
                     <div class="task-check" data-action="toggle" data-id="${t.id}">✓</div>
-                    <div class="task-content"><div class="task-text">${escapeHtml(t.text)}</div><div class="task-meta">${tagsHtml} ${pl}</div></div>
+                    <div class="task-content"><div class="task-text">${escapeHtml(t.text)}</div><div class="task-meta">${tagsHtml} ${pl} · ${blockName}</div></div>
                     <div class="task-actions"><button class="btn-icon" data-action="edit" data-id="${t.id}">✎</button><button class="btn-icon del" data-action="delete" data-id="${t.id}">✕</button></div>
                 </li>`;
             }
 
             function bindEvents() {
-                document.querySelectorAll('.block-header').forEach(h => h.addEventListener('click', function() { this.closest('.block').classList.toggle('open'); }));
-                document.querySelectorAll('[data-action]').forEach(el => el.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    const a = this.dataset.action, id = this.dataset.id;
-                    if (a === 'toggle') toggleTask(id);
-                    if (a === 'edit') openEditModal(id);
-                    if (a === 'delete') deleteTask(id);
-                }));
+                document.querySelectorAll('.block-header').forEach(h => {
+                    // Стрелка сворачивает блок
+                    const arrow = h.querySelector('.block-arrow');
+                    if (arrow) {
+                        arrow.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            h.closest('.block').classList.toggle('open');
+                        });
+                    }
+                    // Клик по заголовку тоже сворачивает
+                    h.addEventListener('click', function(e) {
+                        if (e.target.closest('[data-action]') || e.target.closest('.block-arrow')) return;
+                        this.closest('.block').classList.toggle('open');
+                    });
+                });
+
+                document.querySelectorAll('[data-action]').forEach(el => {
+                    el.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        const a = this.dataset.action, id = this.dataset.id, blockId = this.dataset.blockId;
+                        if (a === 'toggle') toggleTask(id);
+                        if (a === 'edit') openEditTaskModal(id);
+                        if (a === 'delete') deleteTask(id);
+                        if (a === 'editBlock') openEditBlockModal(blockId);
+                        if (a === 'deleteBlock') deleteBlock(blockId);
+                    });
+                });
             }
 
             async function toggleTask(id) {
@@ -345,10 +513,26 @@
                 }
             }
 
-            function openAddModal() {
+            async function deleteBlock(id) {
+                if (blocks.length <= 1) {
+                    alert('Должен остаться хотя бы один блок');
+                    return;
+                }
+                if (confirm('Удалить блок? Задачи переместятся в первый блок.')) {
+                    await deleteBlockFromDB(id);
+                    blocks = blocks.filter(b => b.id !== id);
+                    await loadTasks();
+                }
+            }
+
+            // ─── Модальные окна ───
+            function openAddTaskModal() {
+                modalMode = 'task';
                 editingId = null;
                 modalTitle.textContent = 'Новая задача';
-                modalBlock.value = '0';
+                modalTaskFields.classList.remove('hidden');
+                modalBlockFields.classList.add('hidden');
+                modalBlock.value = blocks[0]?.id || '0';
                 modalText.value = '';
                 modalPriority.value = 'mid';
                 modalTags.value = '';
@@ -356,11 +540,14 @@
                 modalText.focus();
             }
 
-            function openEditModal(id) {
+            function openEditTaskModal(id) {
                 const t = tasks.find(t => t.id === id);
                 if (!t) return;
+                modalMode = 'task';
                 editingId = id;
-                modalTitle.textContent = 'Редактировать';
+                modalTitle.textContent = 'Редактировать задачу';
+                modalTaskFields.classList.remove('hidden');
+                modalBlockFields.classList.add('hidden');
                 modalBlock.value = t.block;
                 modalText.value = t.text;
                 modalPriority.value = t.priority;
@@ -369,41 +556,89 @@
                 modalText.focus();
             }
 
-            function closeModal() { modalOverlay.classList.add('hidden'); editingId = null; }
+            function openAddBlockModal() {
+                modalMode = 'block';
+                editingBlockId = null;
+                modalTitle.textContent = 'Новый блок';
+                modalTaskFields.classList.add('hidden');
+                modalBlockFields.classList.remove('hidden');
+                modalBlockTitle.value = '';
+                modalBlockIcon.value = '📌';
+                modalOverlay.classList.remove('hidden');
+                modalBlockTitle.focus();
+            }
+
+            function openEditBlockModal(id) {
+                const b = blocks.find(b => b.id === id);
+                if (!b) return;
+                modalMode = 'block';
+                editingBlockId = id;
+                modalTitle.textContent = 'Редактировать блок';
+                modalTaskFields.classList.add('hidden');
+                modalBlockFields.classList.remove('hidden');
+                modalBlockTitle.value = b.title;
+                modalBlockIcon.value = b.icon;
+                modalOverlay.classList.remove('hidden');
+                modalBlockTitle.focus();
+            }
+
+            function closeModal() {
+                modalOverlay.classList.add('hidden');
+                editingId = null;
+                editingBlockId = null;
+            }
 
             async function saveModal() {
-                const text = modalText.value.trim();
-                if (!text) return;
-                const data = {
-                    block: modalBlock.value,
-                    text,
-                    priority: modalPriority.value,
-                    tags: modalTags.value.split(',').map(s => s.trim()).filter(Boolean),
-                };
-
-                if (editingId) {
-                    const t = tasks.find(t => t.id === editingId);
-                    if (t) {
-                        Object.assign(t, data);
-                        await saveTask(t);
+                if (modalMode === 'task') {
+                    const text = modalText.value.trim();
+                    if (!text) return;
+                    const data = {
+                        block: modalBlock.value,
+                        text,
+                        priority: modalPriority.value,
+                        tags: modalTags.value.split(',').map(s => s.trim()).filter(Boolean),
+                    };
+                    if (editingId) {
+                        const t = tasks.find(t => t.id === editingId);
+                        if (t) {
+                            Object.assign(t, data);
+                            await saveTask(t);
+                        }
+                    } else {
+                        const newTask = { id: generateId(), done: false, ...data };
+                        tasks.unshift(newTask);
+                        await saveTask(newTask);
                     }
-                } else {
-                    const newTask = { id: generateId(), done: false, ...data };
-                    tasks.unshift(newTask);
-                    await saveTask(newTask);
+                } else if (modalMode === 'block') {
+                    const title = modalBlockTitle.value.trim();
+                    const icon = modalBlockIcon.value.trim() || '📌';
+                    if (!title) return;
+                    if (editingBlockId) {
+                        const b = blocks.find(b => b.id === editingBlockId);
+                        if (b) {
+                            b.title = title;
+                            b.icon = icon;
+                            await saveBlock(b);
+                        }
+                    } else {
+                        const newBlock = { id: 'b-' + Date.now(), title, icon };
+                        blocks.push(newBlock);
+                        await saveBlock(newBlock);
+                    }
                 }
                 render();
                 closeModal();
             }
 
             function exportToJSON() {
-                const blob = new Blob([JSON.stringify(tasks, null, 2)], { type: 'application/json' });
+                const blob = new Blob([JSON.stringify({ blocks, tasks }, null, 2)], { type: 'application/json' });
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(blob);
                 a.download = 'evrika-tasks.json';
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
+                addLog('Экспортировано в JSON', 'success');
             }
 
             function importFromJSON(file) {
@@ -411,10 +646,36 @@
                 reader.onload = async function(e) {
                     try {
                         const data = JSON.parse(e.target.result);
-                        if (!Array.isArray(data)) throw new Error('Файл должен содержать массив задач');
-                        await importAllTasks(data);
+                        addLog(`JSON загружен. Тип: ${typeof data}, ключи: ${Object.keys(data).join(', ')}`, 'info');
+
+                        let tasksToImport;
+                        if (Array.isArray(data)) {
+                            tasksToImport = data;
+                            addLog(`Обнаружен массив из ${data.length} элементов`, 'info');
+                        } else if (data.tasks && Array.isArray(data.tasks)) {
+                            tasksToImport = data.tasks;
+                            if (data.blocks && Array.isArray(data.blocks)) {
+                                addLog(`Импортируем также ${data.blocks.length} блоков`, 'info');
+                                for (const b of data.blocks) {
+                                    const existing = blocks.find(x => x.id === b.id);
+                                    if (existing) {
+                                        existing.title = b.title;
+                                        existing.icon = b.icon;
+                                        await saveBlock(existing);
+                                    } else {
+                                        blocks.push(b);
+                                        await saveBlock(b);
+                                    }
+                                }
+                            }
+                        } else {
+                            throw new Error('Неизвестный формат JSON. Ожидается массив задач или объект с полем tasks');
+                        }
+
+                        await importAllTasks(tasksToImport);
                     } catch(err) {
-                        alert('Ошибка: ' + err.message);
+                        addLog('КРИТИЧЕСКАЯ ОШИБКА: ' + err.message, 'error');
+                        alert('Ошибка импорта: ' + err.message + '\n\nПроверь логи (кнопка Логи)');
                     }
                 };
                 reader.readAsText(file);
@@ -422,6 +683,7 @@
 
             function triggerImport() { fileInput.click(); }
 
+            // Обработчики
             document.getElementById('filters').addEventListener('click', function(e) {
                 if (e.target.classList.contains('filter-btn')) {
                     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -431,18 +693,28 @@
                 }
             });
             document.getElementById('searchInput').addEventListener('input', function() { searchQuery = this.value; render(); });
-            document.getElementById('btnAddTask').addEventListener('click', openAddModal);
+            document.getElementById('btnAddTask').addEventListener('click', openAddTaskModal);
+            document.getElementById('btnAddBlock').addEventListener('click', openAddBlockModal);
             document.getElementById('btnModalCancel').addEventListener('click', closeModal);
             document.getElementById('btnModalSave').addEventListener('click', saveModal);
             document.getElementById('btnExport').addEventListener('click', exportToJSON);
             document.getElementById('btnImport').addEventListener('click', triggerImport);
+            document.getElementById('btnShowLogs').addEventListener('click', function() {
+                logPanel.classList.toggle('hidden');
+                renderLogs();
+            });
             fileInput.addEventListener('change', function() { if (this.files.length > 0) { importFromJSON(this.files[0]); this.value = ''; } });
             modalOverlay.addEventListener('click', function(e) { if (e.target === modalOverlay) closeModal(); });
             document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && !modalOverlay.classList.contains('hidden')) closeModal(); });
 
             // Запуск
-            userId = getUserId();
-            loadTasks();
+            async function init() {
+                userId = getUserId();
+                addLog('Запуск. User ID: ' + userId, 'info');
+                await loadBlocks();
+                await loadTasks();
+            }
+            init();
         })();
     </script>
 </body>
