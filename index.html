@@ -374,23 +374,30 @@
                     return;
                 }
 
-                // Удаляем старые
-                addLog('Удаляем старые задачи...', 'info');
-                const { error: delError } = await supabase.from('tasks').delete().eq('user_id', userId);
-                if (delError) {
-                    addLog('Ошибка удаления старых задач: ' + delError.message, 'error');
-                }
-
-                // Вставляем новые батчами по 50
-                addLog(`Вставляем ${validTasks.length} задач...`, 'info');
+                // Вставляем/обновляем задачи через upsert
+                addLog(`Вставляем ${validTasks.length} задач через upsert...`, 'info');
                 for (let i = 0; i < validTasks.length; i += 50) {
                     const batch = validTasks.slice(i, i + 50);
-                    const { error } = await supabase.from('tasks').insert(batch);
+                    const { error } = await supabase.from('tasks').upsert(batch, { onConflict: 'id' });
                     if (error) {
                         addLog(`Ошибка вставки батча ${i}: ${error.message}`, 'error');
                     } else {
                         addLog(`Батч ${i}-${i + batch.length} вставлен`, 'success');
                     }
+                }
+                
+                // Удаляем задачи, которых нет в новом списке
+                const newIds = validTasks.map(t => t.id);
+                const { error: delError } = await supabase
+                    .from('tasks')
+                    .delete()
+                    .eq('user_id', userId)
+                    .not('id', 'in', `(${newIds.join(',')})`);
+                
+                if (delError) {
+                    addLog('Ошибка удаления старых задач: ' + delError.message, 'error');
+                } else {
+                    addLog('Старые задачи удалены', 'success');
                 }
 
                 setSyncStatus('● онлайн', 'saved');
